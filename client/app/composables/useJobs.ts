@@ -34,13 +34,17 @@ export function useJobs() {
   const loading    = ref(false)
   const error      = ref<string | null>(null)
 
-  async function fetchJobs(page = 1, search = '') {
+  async function fetchJobs(page = 1, search = '', include: string | string[] = '') {
     loading.value = true
     error.value   = null
     try {
+      const includeParam = Array.isArray(include)
+        ? include.length ? include : undefined
+        : include?.trim() ? include : undefined
       const res = await apiFetch<{ data: Job[]; meta: JobPagination }>('/jobs', {
         params: {
           page,
+          ...(includeParam ? { include: includeParam } : {}),
           ...(search ? { 'filter[search]': search } : {}),
         },
       })

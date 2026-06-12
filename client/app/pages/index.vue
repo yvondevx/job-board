@@ -6,35 +6,55 @@ const authStore = useAuthStore()
 const route = useRoute()
 const router = useRouter()
 
-const search = ref('')
-const page = ref(1)
-
 function parsePage(value: string | string[] | undefined) {
   const pageString = Array.isArray(value) ? value[0] : value
   const pageNumber = Number(pageString)
   return Number.isInteger(pageNumber) && pageNumber > 0 ? pageNumber : 1
 }
 
-watch(search, () => { page.value = 1; fetchJobs(1, search.value) })
-watch(page, (p) => {
-  fetchJobs(p, search.value)
-  void router.replace({
-    query: {
-      ...route.query,
-      page: p.toString(),
-    },
-  })
+function parseSearch(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value ?? ''
+}
+
+function parseInclude(value: string | string[] | undefined) {
+  if (Array.isArray(value)) return value
+  if (!value) return []
+  return String(value).split(',').filter(Boolean)
+}
+
+const page = ref(parsePage(route.query.page))
+const search = ref(parseSearch(route.query['filter[search]']))
+const include = ref<string[]>(parseInclude(route.query.include))
+
+function updateRouteQuery(pageValue: number, searchValue: string, includeValue: string[]) {
+  const newQuery: Record<string, any> = { ...route.query, page: pageValue.toString() }
+  if (includeValue && includeValue.length) newQuery.include = includeValue
+  else delete newQuery.include
+  if (searchValue) newQuery['filter[search]'] = searchValue
+  else delete newQuery['filter[search]']
+  void router.replace({ query: newQuery })
+}
+
+watch([page, search, include], ([p, s, inc], [oldP, oldS, oldInc]) => {
+  // avoid unnecessary fetches on identical values
+  const incJoined = Array.isArray(inc) ? inc.join(',') : inc ?? ''
+  const oldIncJoined = Array.isArray(oldInc) ? oldInc.join(',') : oldInc ?? ''
+  if (p === oldP && s === oldS && incJoined === oldIncJoined) return
+  fetchJobs(p, s, inc)
+  updateRouteQuery(p, s, Array.isArray(inc) ? inc : [])
 })
 
 onMounted(() => {
-  page.value = parsePage(route.query.page)
-  fetchJobs(page.value, search.value)
+  fetchJobs(page.value, search.value, include.value)
+  updateRouteQuery(page.value, search.value, include.value)
 })
 
 async function handleDelete(id: number) {
   if (!confirm('Delete this job?')) return
   await deleteJob(id)
-  fetchJobs(page.value, search.value)
+  const inc = include.value
+  const srch = search.value
+  fetchJobs(page.value, srch, inc)
 }
 </script>
 
@@ -60,13 +80,28 @@ async function handleDelete(id: number) {
       </div>
     </div>
 
+    <!-- Include selector -->
+    <div class="flex items-center gap-3 mb-4">
+      <label class="text-sm text-gray-700">Include:</label>
+      <label class="flex items-center gap-2">
+        <input type="checkbox" value="photos" v-model="include" class="mt-0.5" />
+        <span class="text-sm">Photos</span>
+      </label>
+      <label class="flex items-center gap-2">
+        <input type="checkbox" value="author" v-model="include" class="mt-0.5" />
+        <span class="text-sm">Author</span>
+      </label>
+    </div>
+
     <!-- Search -->
-    <input
-      v-model="search"
-      type="text"
-      placeholder="Search by title, location, description..."
-      class="w-full border border-gray-300 rounded-lg px-4 py-2 mb-6 focus:ring-2 focus:ring-blue-500 outline-none"
-    />
+    <div class="mb-4">
+      <input
+        v-model="search"
+        type="text"
+        placeholder="Search by title, location, description..."
+        class="w-full border border-gray-300 rounded-lg px-4 py-2 mb-6 focus:ring-2 focus:ring-blue-500 outline-none"
+      />
+    </div>
 
     <!-- Error -->
     <p v-if="error" class="text-red-600 mb-4">{{ error }}</p>
