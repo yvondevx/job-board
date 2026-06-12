@@ -3,14 +3,33 @@ definePageMeta({ middleware: 'auth' })
 
 const { jobs, pagination, loading, error, fetchJobs, deleteJob } = useJobs()
 const authStore = useAuthStore()
+const route = useRoute()
+const router = useRouter()
 
 const search = ref('')
-const page   = ref(1)
+const page = ref(1)
+
+function parsePage(value: string | string[] | undefined) {
+  const pageString = Array.isArray(value) ? value[0] : value
+  const pageNumber = Number(pageString)
+  return Number.isInteger(pageNumber) && pageNumber > 0 ? pageNumber : 1
+}
 
 watch(search, () => { page.value = 1; fetchJobs(1, search.value) })
-watch(page,   (p) => fetchJobs(p, search.value))
+watch(page, (p) => {
+  fetchJobs(p, search.value)
+  void router.replace({
+    query: {
+      ...route.query,
+      page: p.toString(),
+    },
+  })
+})
 
-onMounted(() => fetchJobs())
+onMounted(() => {
+  page.value = parsePage(route.query.page)
+  fetchJobs(page.value, search.value)
+})
 
 async function handleDelete(id: number) {
   if (!confirm('Delete this job?')) return
